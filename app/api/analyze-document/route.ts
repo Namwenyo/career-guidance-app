@@ -43,7 +43,7 @@ Subjects and Grades: ${subjects.map((s) => `${s.name}: ${s.grade} (${s.points} p
 Total Points: ${totalPoints}
 
 Provide a brief analysis of the student's academic strengths and areas for improvement based on these results.`,
-      maxTokens: 500,
+      maxOutputTokens: 500,
     })
 
     const analysisData = {

@@ -2,6 +2,15 @@ import { type NextRequest, NextResponse } from "next/server"
 import { query } from "@/lib/database"
 import type { StudentProfile, UniversityProgram } from "@/lib/university-data"
 
+const LEVEL_HIERARCHY: Record<string, number> = {
+  "NSSCAS": 3,
+  "NSSCH": 2,
+  "HIGCSE": 2,
+  "NSSCO": 1,
+  "IGCSE": 1
+}
+  
+
 export async function POST(request: NextRequest) {
   try {
     const studentProfile: StudentProfile = await request.json()
@@ -87,18 +96,19 @@ async function getDjangoAIMatches(studentProfile: StudentProfile, programs: Univ
     const djangoData = await djangoResponse.json()
     console.log("📥 Received from Django:", JSON.stringify(djangoData, null, 2))
 
-    // Transform Django response to your format
+    // Transform Django response to my format
     return transformDjangoToYourFormat(djangoData, studentProfile, programs)
     
   } catch (error) {
     console.error('❌ Django AI matching failed:', error)
     
-    // 🚫 NO FALLBACK - Throw error so you know it's not working
-    throw new Error(`Django AI service unavailable: ${error.message}`)
+    // 🚫 NO FALLBACK - Throwing an  error so i know it's not working
+     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+  throw new Error(`Django AI service unavailable: ${errorMessage}`)
   }
 }
 
-// 🚀 NEW: Transform Django AI response to your format
+// 🚀transform Django AI response to my typescripts format
 function transformDjangoToYourFormat(
   djangoData: any, 
   studentProfile: StudentProfile, 
@@ -111,9 +121,9 @@ function transformDjangoToYourFormat(
   
   console.log(`📊 Django found ${matchCount} matching programs`)
 
-  // Create matches in your existing format
+  // Create matches in my existing existing format
   const matches = djangoPrograms.map((djangoProgram: any) => {
-    // Find the original program object from our database results
+    // Find the original program object from the database results
     const originalProgram = programs.find(p => 
       p.id === `${djangoProgram.institution}-${djangoProgram.program_code}` ||
       p.programName === djangoProgram.program_name
@@ -328,38 +338,41 @@ function parseAdmissionRequirements(structured: any): any[] {
   return [] 
 } 
 
-function checkProgramRequirements(student: StudentProfile, program: UniversityProgram) { 
-  const missingRequirements: string[] = [] 
+function checkProgramRequirements(student: StudentProfile, program: UniversityProgram) {
+  const missingRequirements: string[] = []
 
-  if (student.totalPoints < program.minPoints) { 
-    missingRequirements.push(`Need ${program.minPoints - student.totalPoints} more points`) 
-  } 
+  if (student.totalPoints < program.minPoints) {
+    missingRequirements.push(`Need ${program.minPoints - student.totalPoints} more points`)
+  }
 
-  for (const requirement of program.admissionRequirements) { 
-    const studentSubject = student.subjects.find( 
-      (s) => s.subject === requirement.subject && s.level === requirement.level, 
-    ) 
+  for (const requirement of program.admissionRequirements) {
+    // Find student subject with level hierarchy logic
+    const studentSubject = student.subjects.find((s) => {
+      const subjectMatches = s.subject.toLowerCase() === requirement.subject.toLowerCase()
+      const levelQualifies = checkLevelRequirement(s.level, requirement.level)
+      return subjectMatches && levelQualifies
+    })
 
-    if (!studentSubject) { 
-      missingRequirements.push( 
-        `${requirement.subject} at ${requirement.level} level (${requirement.minGrade} or better)`, 
-      ) 
-      continue 
-    } 
+    if (!studentSubject) {
+      missingRequirements.push(
+        `${requirement.subject} at ${requirement.level} level or higher (${requirement.minGrade} or better)`,
+      )
+      continue
+    }
 
-    const isGradeSufficient = checkGradeRequirement(studentSubject.grade, requirement.minGrade, requirement.level) 
-    if (!isGradeSufficient) { 
-      missingRequirements.push( 
-        `${requirement.subject}: Need ${requirement.minGrade} or better (you have ${studentSubject.grade})`, 
-      ) 
-    } 
-  } 
+    const isGradeSufficient = checkGradeRequirement(studentSubject.grade, requirement.minGrade, studentSubject.level)
+    if (!isGradeSufficient) {
+      missingRequirements.push(
+        `${requirement.subject}: Need ${requirement.minGrade} or better (you have ${studentSubject.grade})`,
+      )
+    }
+  }
 
-  return { 
-    eligible: missingRequirements.length === 0, 
-    missingRequirements, 
-  } 
-} 
+  return {
+    eligible: missingRequirements.length === 0,
+    missingRequirements,
+  }
+}
 
 function checkGradeRequirement(studentGrade: string, requiredGrade: string, level: string): boolean { 
   let gradeOrder: string[] 
@@ -447,16 +460,57 @@ function generateRecommendationReason(
 }
 
 function checkGeneralEligibility(student: StudentProfile, institution: "UNAM" | "NUST" | "IUM"): boolean {
-  // Simplified general eligibility check
   const englishSubject = student.subjects.find((s) => s.subject === "English")
-
   if (!englishSubject) return false
-  if (student.totalPoints < 20) return false // Basic minimum
 
-  const gradeOrder = ["A*", "A", "B", "C", "D", "E", "F"]
-  const englishIndex = gradeOrder.indexOf(englishSubject.grade)
+  const studentPoints = student.totalPoints
+  const englishPoints = englishSubject.points
 
-  return englishIndex <= 3 // C or better
+  // Count subjects by level with proper hierarchy understanding
+  const nsscoSubjects = student.subjects.filter(s => s.level === "NSSCO")
+  const higherLevelSubjects = student.subjects.filter(s => 
+    ["NSSCH", "NSSCAS", "HIGCSE"].includes(s.level)
+  )
+
+  if (institution === "UNAM") {
+    // Count higher level subjects with D or better (6+ points)
+    const higherLevelDPlus = higherLevelSubjects.filter(s => s.points >= 6).length
+    
+    // Count NSSCO subjects with C or better (5+ points)
+    const nsscoCPlus = nsscoSubjects.filter(s => s.points >= 5).length
+    
+    // Count NSSCO subjects with D or better (4+ points)  
+    const nsscoDPlus = nsscoSubjects.filter(s => s.points >= 4).length
+
+    // UNAM Degree Requirements
+    if (studentPoints >= 25 && englishPoints >= 5) {
+      // Option 1: 2 higher level (≥D) + 3 NSSCO (≥C)
+      if (higherLevelDPlus >= 2 && nsscoCPlus >= 3) return true
+      
+      // Option 2: 3 higher level (≥D) + 2 NSSCO (≥D)
+      if (higherLevelDPlus >= 3 && nsscoDPlus >= 2) return true
+      
+      // Option 3: 5 NSSCO subjects (traditional route)
+      if (nsscoSubjects.length >= 5 && nsscoCPlus >= 3) return true
+    }
+
+    // UNAM Diploma Requirements
+    if (studentPoints >= 24 && englishPoints >= 4) {
+      return true
+    }
+
+    return false
+  }
+
+  if (institution === "NUST") {
+    return studentPoints >= 25 && englishPoints >= 3
+  }
+
+  if (institution === "IUM") {
+    return studentPoints >= 25 && englishPoints >= 4
+  }
+
+  return false
 }
 
 function generateImprovementSuggestions(student: StudentProfile, topMatches: any[]): string[] {
@@ -471,4 +525,10 @@ function generateImprovementSuggestions(student: StudentProfile, topMatches: any
   }
 
   return suggestions
+}
+
+function checkLevelRequirement(studentLevel: string, requiredLevel: string): boolean {
+  const studentLevelNum = LEVEL_HIERARCHY[studentLevel] || 0
+  const requiredLevelNum = LEVEL_HIERARCHY[requiredLevel] || 0
+  return studentLevelNum >= requiredLevelNum
 }

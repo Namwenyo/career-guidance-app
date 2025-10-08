@@ -28,12 +28,12 @@ ${JSON.stringify(matches, null, 2)}
 Please provide a comprehensive career guidance response that includes:
 
 1. A personalized, encouraging message for the student
-2. Top 3 program recommendations with detailed reasoning
+2. Top 5 program recommendations with detailed reasoning
 3. Specific improvement suggestions if needed
 4. Current career market insights for Namibia
 
 Format your response as a detailed analysis that will help guide this student's career decisions.`,
-      maxTokens: 2000,
+      maxOutputTokens: 2000,
     })
 
     const aiRecommendations = {
@@ -41,7 +41,7 @@ Format your response as a detailed analysis that will help guide this student's 
         text.split("\n")[0] ||
         "Based on your academic profile, you have great potential for success in higher education.",
       fullAnalysis: text,
-      topRecommendations: matches.slice(0, 3).map((match: any, index: number) => ({
+      topRecommendations: (matches.recommendations?.topMatches || matches.topMatches || []).slice(0, 3).map((match: any, index: number) => ({
         program: match.program.name,
         university: match.program.university,
         matchScore: match.score,

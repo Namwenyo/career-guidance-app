@@ -111,7 +111,7 @@ export async function getUniversityPrograms(): Promise<UniversityProgram[]> {
      ORDER BY institution, program_name
     `)
 
-    return result.rows.map((row, index) => ({
+    return result.rows.map((row: any, index: number) => ({
       id: `${row.institution.toLowerCase()}-${row.program_code || index}`,
       institution: row.institution as "UNAM" | "NUST" | "IUM",
       faculty: row.faculty || "",
@@ -142,7 +142,7 @@ export async function getGeneralRequirements(): Promise<GeneralRequirements[]> {
       ORDER BY institution
     `)
 
-    return result.rows.map((row) => ({
+    return result.rows.map((row: any) => ({
       ...row,
       degreeRequirements: JSON.parse(row.degreeRequirements || "{}"),
       diplomaRequirements: row.diplomaRequirements ? JSON.parse(row.diplomaRequirements) : undefined,
@@ -163,7 +163,7 @@ export async function getInterestCategories(): Promise<string[]> {
       ORDER BY interest_category
     `)
 
-    return result.rows.map((row) => row.category_name)
+    return result.rows.map((row: any) => row.category_name)
   } catch (error) {
     console.error("Error fetching interest categories:", error)
     const { interestCategories } = await import("./university-data")

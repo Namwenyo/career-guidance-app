@@ -12,7 +12,7 @@ export async function GET() {
 
     const allInterests = new Set<string>()
 
-    result.rows.forEach((row) => {
+    result.rows.forEach((row: any) => {
       if (row.interest_category) {
         const interests = row.interest_category
           .split(",")

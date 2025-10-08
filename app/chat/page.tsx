@@ -100,7 +100,7 @@ export default function ChatPage() {
             </Card>
           ))}
 
-          {status === "in_progress" && (
+          {status === "streaming" && (
             <Card className="mr-12">
               <CardContent className="p-4">
                 <div className="flex items-start gap-3">
@@ -120,10 +120,10 @@ export default function ChatPage() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask me about career guidance, university programs, or anything else..."
-            disabled={status === "in_progress"}
+            disabled={status === "streaming"}
             className="flex-1"
           />
-          <Button type="submit" disabled={status === "in_progress" || !input.trim()}>
+          <Button type="submit" disabled={status === "streaming" || !input.trim()}>
             <Send className="h-4 w-4" />
           </Button>
         </form>

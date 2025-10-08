@@ -6,6 +6,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Career Namibia',
+  description: 'AI-powered career guidance for Namibian students',
 }
 
 export default function RootLayout({

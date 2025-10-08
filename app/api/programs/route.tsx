@@ -85,7 +85,7 @@ export async function GET() {
       ORDER BY institution, program_name
     `)
 
-    const programs = result.rows.map((row, index) => ({
+    const programs = result.rows.map((row: any, index: number) => ({
       id: `${row.institution?.toLowerCase()}-${row.program_code || index}`,
       institution: row.institution as "UNAM" | "NUST" | "IUM",
       faculty: row.faculty || "",
