@@ -17,9 +17,9 @@ import { gradeToPoints, type StudentProfile } from "@/lib/university-data"
 import { InterestSearch } from "@/components/interest-search"
 
 const subjects = [
-"English","Oshindonga","Oshikwanyama","Mathematics","Biology","Chemistry",
-"Physical Science","Geography","History","Development Studies","Computer Science",
-"Agriculture","Accounting","Economics","Business Studies"
+  "English", "Oshindonga", "Oshikwanyama", "Mathematics", "Biology", "Chemistry",
+  "Physical Science", "Geography", "History", "Development Studies", "Computer Science",
+  "Agriculture", "Accounting", "Economics", "Business Studies"
 ]
 
 const levels = ["NSSCO", "NSSCAS", "NSSCH", "HIGCSE", "IGCSE"]
@@ -42,53 +42,149 @@ export default function AssessmentPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [inputMethod, setInputMethod] = useState<"upload" | "manual" | null>(null)
 
+  const convertPdfToImage = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = async (e) => {
+        try {
+          const pdfData = e.target?.result as ArrayBuffer
+          
+          // Use a simpler approach with a CDN that works in browsers
+          // Dynamically load PDF.js from CDN
+          const script = document.createElement('script')
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'
+          
+          // Wait for PDF.js to load
+          await new Promise((resolve, reject) => {
+            script.onload = resolve
+            script.onerror = reject
+            document.head.appendChild(script)
+          })
+
+          // @ts-ignore - pdfjsLib will be available globally after script loads
+          const pdfjsLib = window.pdfjsLib
+          
+          if (!pdfjsLib) {
+            throw new Error('PDF.js failed to load')
+          }
+
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
+          
+          const loadingTask = pdfjsLib.getDocument({ data: pdfData })
+          const pdf = await loadingTask.promise
+          
+          // Get first page
+          const page = await pdf.getPage(1)
+          const viewport = page.getViewport({ scale: 1.5 }) // Reduced scale for better performance
+          
+          // Create canvas for rendering
+          const canvas = document.createElement('canvas')
+          const context = canvas.getContext('2d')
+          if (!canvas || !context) {
+            reject(new Error('Could not create canvas'))
+            return
+          }
+          
+          canvas.height = viewport.height
+          canvas.width = viewport.width
+          
+          // Render PDF page to canvas
+          const renderContext = {
+            canvasContext: context,
+            viewport: viewport
+          }
+          
+          await page.render(renderContext).promise
+          
+          // Convert canvas to base64 image
+          const imageData = canvas.toDataURL('image/jpeg', 0.8) // Use JPEG for smaller size
+          resolve(imageData)
+        } catch (error) {
+          console.error('PDF conversion error:', error)
+          reject(new Error(`Failed to process PDF: ${error instanceof Error ? error.message : 'Unknown error'}`))
+        }
+      }
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsArrayBuffer(file)
+    })
+  }
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf']
+    if (!validTypes.includes(file.type)) {
+      alert('Please upload a valid image (JPEG, PNG, WebP) or PDF file')
+      return
+    }
+
+    // Validate file size (10MB max)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('File size must be less than 10MB')
+      return
+    }
 
     setUploadedFile(file)
     setIsProcessing(true)
     setInputMethod("upload")
 
     try {
-      const reader = new FileReader()
-      reader.onload = async () => {
-        const imageData = reader.result as string
+      let imageData: string
 
-        const response = await fetch("/api/analyze-document", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            imageData,
-            mimeType: file.type,
-          }),
+      if (file.type === 'application/pdf') {
+        console.log('Processing PDF file...')
+        // Convert PDF to image
+        imageData = await convertPdfToImage(file)
+        console.log('PDF converted successfully')
+      } else {
+        console.log('Processing image file...')
+        // For images, read directly as base64
+        imageData = await new Promise((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(file)
         })
-
-        const result = await response.json()
-
-        if (result.success) {
-          setStudentProfile((prev) => ({
-            ...prev,
-            subjects: result.data.subjects.map((subject: any) => ({
-              subject: subject.name,
-              level: "NSSCO" as const,
-              grade: subject.grade,
-              points: subject.points,
-            })),
-          }))
-        } else {
-          console.error("Document analysis failed:", result.error)
-          // Fall back to manual entry
-          setInputMethod("manual")
-        }
-
-        setIsProcessing(false)
       }
-      reader.readAsDataURL(file)
+
+      console.log('Sending to OCR API...')
+      const response = await fetch("/api/analyze-document", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          imageData,
+          mimeType: file.type,
+          fileName: file.name,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        console.log('OCR successful, setting subjects...')
+        setStudentProfile((prev) => ({
+          ...prev,
+          subjects: result.data.subjects.map((subject: any) => ({
+            subject: subject.name,
+            level: subject.level as "NSSCO" | "NSSCAS" | "NSSCH" | "HIGCSE" | "IGCSE",
+            grade: subject.grade,
+            points: subject.points,
+          })),
+        }))
+      } else {
+        console.error("Document analysis failed:", result.error)
+        alert(`OCR failed: ${result.error}. Please enter subjects manually.`)
+        setInputMethod("manual")
+      }
+
+      setIsProcessing(false)
     } catch (error) {
       console.error("Document processing failed:", error)
+      alert(`File processing failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please enter subjects manually.`)
       setIsProcessing(false)
       setInputMethod("manual")
     }
@@ -124,7 +220,7 @@ export default function AssessmentPage() {
 
       if (field === "grade") {
         const level = subjects[index].level as "NSSCO" | "NSSCAS" | "NSSCH" | "HIGCSE" | "IGCSE"
-        subjects[index].points = gradeToPoints[level][value] || 0
+        subjects[index].points = gradeToPoints[level]?.[value] || 0
       }
 
       return { ...prev, subjects }
@@ -149,10 +245,25 @@ export default function AssessmentPage() {
   }
 
   const calculateTotalPoints = () => {
-    return (studentProfile.subjects || [])
-      .slice(0, 5)
+    if (!studentProfile.subjects || studentProfile.subjects.length === 0) {
+      return 0
+    }
+    
+    // Sort by points descending and take top 5
+    const sortedSubjects = [...studentProfile.subjects]
       .sort((a, b) => b.points - a.points)
-      .reduce((total, subject) => total + subject.points, 0)
+      .slice(0, 5)
+    
+    const total = sortedSubjects.reduce((sum, subject) => sum + subject.points, 0)
+    
+    // Debug log
+    console.log("Calculating total points from subjects:", {
+      totalSubjects: studentProfile.subjects.length,
+      best5: sortedSubjects.map(s => `${s.subject}: ${s.points}`),
+      totalPoints: total
+    })
+    
+    return total
   }
 
   const handleSubmit = () => {
@@ -217,7 +328,7 @@ export default function AssessmentPage() {
             <CardHeader>
               <CardTitle>Academic Results</CardTitle>
               <CardDescription>
-                Upload your report card to automatically fill in your results, or enter them manually below.
+                Upload your report card (PDF or image) to automatically fill in your results, or enter them manually below.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -228,7 +339,10 @@ export default function AssessmentPage() {
                     <div className="space-y-2">
                       <h3 className="text-lg font-medium">Upload Your Report Card</h3>
                       <p className="text-sm text-muted-foreground">
-                        Upload a clear photo or scan of your report card and we'll automatically extract your grades
+                        Upload a PDF or clear photo of your report card and we'll automatically extract your grades
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Supported formats: PDF, JPEG, PNG, WebP (Max 10MB)
                       </p>
                     </div>
                     <div className="mt-4">
@@ -241,14 +355,17 @@ export default function AssessmentPage() {
                       <Input
                         id="report-upload"
                         type="file"
-                        accept="image/*,.pdf"
+                        accept=".pdf,image/*"
                         onChange={handleFileUpload}
                         className="hidden"
                         disabled={isProcessing}
                       />
                     </div>
                     {uploadedFile && (
-                      <p className="text-sm text-muted-foreground mt-2">Uploaded: {uploadedFile.name}</p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Uploaded: {uploadedFile.name} 
+                        {uploadedFile.type === 'application/pdf' && ' (PDF)'}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -258,7 +375,10 @@ export default function AssessmentPage() {
                 <div className="text-center py-4">
                   <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                    Extracting grades from your report card...
+                    {uploadedFile?.type === 'application/pdf' 
+                      ? "Converting PDF and extracting grades..." 
+                      : "Extracting grades from your report card..."
+                    }
                   </div>
                 </div>
               )}
@@ -279,7 +399,7 @@ export default function AssessmentPage() {
                   {inputMethod === "upload" && (
                     <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
                       <span className="text-sm text-muted-foreground">
-                        Extracted {studentProfile.subjects?.length || 0} subjects from your report card
+                        Extracted {studentProfile.subjects?.length || 0} subjects from your document
                       </span>
                       <Button
                         variant="outline"

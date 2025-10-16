@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { X } from "lucide-react"
+import { X, Plus } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface InterestSearchProps {
   selectedInterests: string[]
@@ -15,6 +16,7 @@ export function InterestSearch({ selectedInterests, onInterestsChange }: Interes
   const [availableInterests, setAvailableInterests] = useState<string[]>([])
   const [filteredInterests, setFilteredInterests] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [showCustomInput, setShowCustomInput] = useState(false)
 
   useEffect(() => {
     const fetchInterests = async () => {
@@ -44,11 +46,19 @@ export function InterestSearch({ selectedInterests, onInterestsChange }: Interes
   useEffect(() => {
     if (searchTerm.trim() === "") {
       setFilteredInterests(availableInterests.slice(0, 10))
+      setShowCustomInput(false)
     } else {
       const filtered = availableInterests.filter((interest) =>
-        interest.toLowerCase().startsWith(searchTerm.toLowerCase()),
+        interest.toLowerCase().includes(searchTerm.toLowerCase()),
       )
       setFilteredInterests(filtered)
+      
+      // Show custom input if search term doesn't match any existing interests
+      // and the term is at least 2 characters long
+      const exactMatch = availableInterests.some(
+        interest => interest.toLowerCase() === searchTerm.toLowerCase()
+      )
+      setShowCustomInput(!exactMatch && searchTerm.length >= 2)
     }
   }, [searchTerm, availableInterests])
 
@@ -57,10 +67,26 @@ export function InterestSearch({ selectedInterests, onInterestsChange }: Interes
       onInterestsChange([...selectedInterests, interest])
     }
     setSearchTerm("")
+    setShowCustomInput(false)
   }
 
   const removeInterest = (interest: string) => {
     onInterestsChange(selectedInterests.filter((i) => i !== interest))
+  }
+
+  const addCustomInterest = () => {
+    if (searchTerm.trim() && !selectedInterests.includes(searchTerm.trim())) {
+      onInterestsChange([...selectedInterests, searchTerm.trim()])
+      setSearchTerm("")
+      setShowCustomInput(false)
+    }
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && showCustomInput) {
+      e.preventDefault()
+      addCustomInterest()
+    }
   }
 
   if (isLoading) {
@@ -79,47 +105,75 @@ export function InterestSearch({ selectedInterests, onInterestsChange }: Interes
       <div className="relative">
         <Input
           type="text"
-          placeholder="Type to search interests..."
+          placeholder="Type to search interests or add your own..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          onKeyPress={handleKeyPress}
           className="w-full"
         />
-        {searchTerm && filteredInterests.length > 0 && (
+        
+        {/* Dropdown with search results */}
+        {searchTerm && (filteredInterests.length > 0 || showCustomInput) && (
           <div className="absolute z-10 w-full mt-1 bg-background border border-border rounded-md shadow-lg max-h-48 overflow-y-auto">
+            {/* Existing interests from database */}
             {filteredInterests
               .filter((interest) => !selectedInterests.includes(interest))
               .map((interest) => (
                 <button
                   key={interest}
                   onClick={() => addInterest(interest)}
-                  className="w-full px-3 py-2 text-left hover:bg-muted transition-colors text-sm"
+                  className="w-full px-3 py-2 text-left hover:bg-muted transition-colors text-sm flex items-center gap-2"
                 >
+                  <Plus className="h-3 w-3 text-muted-foreground" />
                   {interest}
                 </button>
               ))}
+            
+            {/* Custom interest option */}
+            {showCustomInput && (
+              <button
+                onClick={addCustomInterest}
+                className="w-full px-3 py-2 text-left hover:bg-muted transition-colors text-sm flex items-center gap-2 border-t border-border"
+              >
+                <Plus className="h-3 w-3 text-green-600" />
+                <span className="text-green-600 font-medium">Add "{searchTerm}" as custom interest</span>
+              </button>
+            )}
           </div>
         )}
       </div>
 
+      {/* Selected Interests */}
       {selectedInterests.length > 0 && (
         <div className="space-y-2">
           <div className="text-sm font-medium">Selected Interests:</div>
           <div className="flex flex-wrap gap-2">
-            {selectedInterests.map((interest) => (
-              <Badge key={interest} variant="secondary" className="flex items-center gap-1">
-                {interest}
-                <button
-                  onClick={() => removeInterest(interest)}
-                  className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5"
+            {selectedInterests.map((interest) => {
+              const isCustom = !availableInterests.includes(interest)
+              return (
+                <Badge 
+                  key={interest} 
+                  variant={isCustom ? "default" : "secondary"} 
+                  className="flex items-center gap-1"
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            ))}
+                  {interest}
+                  {isCustom && (
+                    <span className="text-xs bg-primary/20 px-1 rounded">custom</span>
+                  )}
+                  <button
+                    onClick={() => removeInterest(interest)}
+                    className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )
+            })}
           </div>
         </div>
       )}
 
+      {/* Available Interests when no search */}
       {searchTerm === "" && (
         <div className="space-y-2">
           <div className="text-sm font-medium">Available Interests (showing first 10):</div>
@@ -130,14 +184,20 @@ export function InterestSearch({ selectedInterests, onInterestsChange }: Interes
                 <button
                   key={interest}
                   onClick={() => addInterest(interest)}
-                  className="text-left p-2 text-sm border border-border rounded-md hover:bg-muted transition-colors"
+                  className="text-left p-2 text-sm border border-border rounded-md hover:bg-muted transition-colors flex items-center gap-2"
                 >
+                  <Plus className="h-3 w-3 text-muted-foreground" />
                   {interest}
                 </button>
               ))}
           </div>
         </div>
       )}
+
+      {/* Instructions */}
+      <div className="text-xs text-muted-foreground">
+        💡 <strong>Tip:</strong> Type any interest and press Enter to add it as a custom interest if it's not in the list.
+      </div>
     </div>
   )
 }
