@@ -33,7 +33,7 @@ Please provide a comprehensive career guidance response that includes:
 4. Current career market insights for Namibia
 
 Format your response as a detailed analysis that will help guide this student's career decisions.`,
-      maxOutputTokens: 2000,
+      maxOutputTokens: 1000,
     })
 
     const aiRecommendations = {

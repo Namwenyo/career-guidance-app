@@ -57,6 +57,7 @@ export default function ResultsPage() {
   const [aiRecommendations, setAiRecommendations] = useState<AIRecommendations | null>(null)
   const [loading, setLoading] = useState(true)
   const [aiLoading, setAiLoading] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
 
   useEffect(() => {
     // Get student profile from localStorage
@@ -69,18 +70,17 @@ export default function ResultsPage() {
     try {
       const profile: StudentProfile = JSON.parse(profileData)
       setStudentProfile(profile)
-
       fetchMatchingResults(profile)
     } catch (error) {
       console.error("Error processing student profile:", error)
-      router.push("/assessment")
-    } finally {
+      setFetchError("Failed to process your profile")
       setLoading(false)
     }
   }, [router])
 
   const fetchMatchingResults = async (profile: StudentProfile) => {
     try {
+      console.log("🔄 Starting API call...")
       const response = await fetch("/api/match-programs", {
         method: "POST",
         headers: {
@@ -90,15 +90,18 @@ export default function ResultsPage() {
       })
 
       if (!response.ok) {
-        throw new Error("Failed to fetch matching results")
+        throw new Error(`Failed to fetch matching results: ${response.status}`)
       }
 
       const results = await response.json()
+      console.log("✅ API response received:", results)
       setMatchingResults(results)
       generateAIRecommendations(profile, results)
     } catch (error) {
       console.error("Error fetching matching results:", error)
-      router.push("/assessment")
+      setFetchError("Failed to load matching results. Please try again.")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -141,6 +144,21 @@ export default function ResultsPage() {
         <div className="text-center">
           <GraduationCap className="h-12 w-12 text-primary mx-auto mb-4 animate-pulse" />
           <p className="text-lg text-muted-foreground">Analyzing your profile and matching programs...</p>
+          <p className="text-sm text-muted-foreground mt-2">This may take a few seconds</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (fetchError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <XCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <p className="text-lg text-muted-foreground mb-4">{fetchError}</p>
+          <Link href="/assessment">
+            <Button>Retake Assessment</Button>
+          </Link>
         </div>
       </div>
     )

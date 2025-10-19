@@ -25,7 +25,7 @@ function parseAdmissionRequirements(structuredReqs: string | object | null | und
 
       if (reqStr.includes("NSSCAS")) {
         level = "NSSCAS"
-        const gradeMatch = reqStr.match(/>=\s*([A-F])/i)
+        const gradeMatch = reqStr.match(/>=\s*([A-E])/i)
         minGrade = gradeMatch ? gradeMatch[1] : "D"
       } else if (reqStr.includes("NSSCH")) {
         level = "NSSCH"
@@ -33,7 +33,7 @@ function parseAdmissionRequirements(structuredReqs: string | object | null | und
         minGrade = gradeMatch ? gradeMatch[1] : "3"
       } else if (reqStr.includes("NSSCO")) {
         level = "NSSCO"
-        const gradeMatch = reqStr.match(/>=\s*([A-G])/i)
+        const gradeMatch = reqStr.match(/>=\s*([A-F])/i)
         minGrade = gradeMatch ? gradeMatch[1] : "C"
       }
 
@@ -99,6 +99,7 @@ export async function getUniversityPrograms(): Promise<UniversityProgram[]> {
       SELECT 
         institution,
         faculty,
+        department,
         program_name,
         program_code,
         duration,
@@ -115,6 +116,7 @@ export async function getUniversityPrograms(): Promise<UniversityProgram[]> {
       id: `${row.institution.toLowerCase()}-${row.program_code || index}`,
       institution: row.institution as "UNAM" | "NUST" | "IUM",
       faculty: row.faculty || "",
+      department: row.department || "",
       programName: row.program_name || "",
       programCode: row.program_code || "",
       duration: row.duration || "",
@@ -125,9 +127,8 @@ export async function getUniversityPrograms(): Promise<UniversityProgram[]> {
     }))
   } catch (error) {
     console.error("Error fetching university programs:", error)
-    // Fallback to hardcoded data if database fails
-    const { universityPrograms } = await import("./program-data")
-    return universityPrograms
+    // 🚨 REMOVED MOCK DATA FALLBACK - Return empty array instead
+    return []
   }
 }
 
@@ -149,9 +150,8 @@ export async function getGeneralRequirements(): Promise<GeneralRequirements[]> {
     }))
   } catch (error) {
     console.error("Error fetching general requirements:", error)
-    // Fallback to hardcoded data if database fails
-    const { generalRequirements } = await import("./university-data")
-    return generalRequirements
+    // 🚨 REMOVED MOCK DATA FALLBACK - Return empty array instead
+    return []
   }
 }
 
@@ -166,7 +166,7 @@ export async function getInterestCategories(): Promise<string[]> {
     return result.rows.map((row: any) => row.category_name)
   } catch (error) {
     console.error("Error fetching interest categories:", error)
-    const { interestCategories } = await import("./university-data")
-    return interestCategories
+    // 🚨 REMOVED MOCK DATA FALLBACK - Return empty array instead
+    return []
   }
 }

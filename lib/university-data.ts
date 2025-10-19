@@ -9,6 +9,7 @@ export interface UniversityProgram {
   id: string
   institution: "UNAM" | "NUST" | "IUM"
   faculty: string
+  department: string
   programName: string
   programCode: string
   duration: string

@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { query } from "@/lib/database"
 import type { StudentProfile, UniversityProgram } from "@/lib/university-data"
 
 const LEVEL_HIERARCHY: Record<string, number> = {
@@ -9,62 +8,11 @@ const LEVEL_HIERARCHY: Record<string, number> = {
   "NSSCO": 1,
   "IGCSE": 1
 }
-  
 
 export async function POST(request: NextRequest) {
   try {
     const studentProfile: StudentProfile = await request.json()
 
-    // Get programs from database 
-    const result = await query( 
-      ` 
-      SELECT  
-        institution, 
-        faculty, 
-        program_name AS name, 
-        program_code AS code, 
-        duration, 
-        minimum_points as min_points, 
-        readable_requirements as admission_requirements_readable, 
-        structured_requirements as admission_requirements_structured, 
-        career_possibilities, 
-        interest_category 
-      FROM guidance_program 
-      WHERE institution = ANY($1) 
-      ORDER BY institution, faculty, program_name 
-    `, 
-      [studentProfile.preferredUniversities], 
-    ) 
-
-    const programs: UniversityProgram[] = result.rows.map((row: any) => ({ 
-      id: `${row.institution}-${row.code}`, 
-      institution: row.institution, 
-      faculty: row.faculty, 
-      programName: row.name, 
-      programCode: row.code, 
-      duration: row.duration, 
-      minPoints: Number.parseInt(row.min_points) || 0, 
-      admissionRequirements: parseAdmissionRequirements(row.admission_requirements_structured), 
-      careerPossibilities: row.career_possibilities 
-        ? row.career_possibilities.split(",").map((s: string) => s.trim()) 
-        : [], 
-      interestCategories: row.interest_category ? 
-        row.interest_category.split(",").map((s: string) => s.trim()) : [], 
-    })) 
-
-    // USE DJANGO AI
-    const matchingResults = await getDjangoAIMatches(studentProfile, programs)
-
-    return NextResponse.json(matchingResults) 
-  } catch (error) { 
-    console.error("Matching error:", error) 
-    return NextResponse.json({ error: "Failed to match programs" }, { status: 500 }) 
-  } 
-}
-
-// Calling Django AI for matching
-async function getDjangoAIMatches(studentProfile: StudentProfile, programs: UniversityProgram[]) {
-  try {
     console.log("🔄 Calling Django AI matching...")
     
     // Prepare data in the format Django expects
@@ -79,8 +27,8 @@ async function getDjangoAIMatches(studentProfile: StudentProfile, programs: Univ
 
     console.log("📤 Sending to Django:", JSON.stringify(requestData, null, 2))
 
-    // Call Django AI endpoint
-  const djangoResponse = await fetch('http://localhost:8000/api/match-programs/', {
+    // Call Django AI endpoint directly - NO LOCAL DATABASE QUERY NEEDED
+    const djangoResponse = await fetch('http://localhost:8000/api/match-programs/', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -96,23 +44,20 @@ async function getDjangoAIMatches(studentProfile: StudentProfile, programs: Univ
     const djangoData = await djangoResponse.json()
     console.log("📥 Received from Django:", JSON.stringify(djangoData, null, 2))
 
-    // Transform Django response to my format
-    return transformDjangoToYourFormat(djangoData, studentProfile, programs)
-    
-  } catch (error) {
-    console.error('❌ Django AI matching failed:', error)
-    
-    // 🚫 NO FALLBACK - Throwing an  error so i know it's not working
-     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
-  throw new Error(`Django AI service unavailable: ${errorMessage}`)
-  }
+    // Transform Django response using Django data directly
+    const matchingResults = transformDjangoToYourFormat(djangoData, studentProfile)
+
+    return NextResponse.json(matchingResults) 
+  } catch (error) { 
+    console.error("Matching error:", error) 
+    return NextResponse.json({ error: "Failed to match programs" }, { status: 500 }) 
+  } 
 }
 
-// 🚀transform Django AI response to my typescripts format
+// 🚀 Transform Django AI response to use Django data directly
 function transformDjangoToYourFormat(
   djangoData: any, 
-  studentProfile: StudentProfile, 
-  programs: UniversityProgram[]
+  studentProfile: StudentProfile
 ) {
   console.log("🔄 Transforming Django response...")
   
@@ -121,23 +66,33 @@ function transformDjangoToYourFormat(
   
   console.log(`📊 Django found ${matchCount} matching programs`)
 
-  // Create matches in my existing existing format
+  // Create UniversityProgram objects directly from Django data
   const matches = djangoPrograms.map((djangoProgram: any) => {
-    // Find the original program object from the database results
-    const originalProgram = programs.find(p => 
-      p.id === `${djangoProgram.institution}-${djangoProgram.program_code}` ||
-      p.programName === djangoProgram.program_name
-    )
-    
-    if (!originalProgram) {
-      console.warn(`❌ Program not found in local database:`, djangoProgram.program_name)
-      return null
+    // Create program object from Django data
+    const program: UniversityProgram = {
+      id: `${djangoProgram.institution}-${djangoProgram.program_code}`,
+      institution: djangoProgram.institution as "UNAM" | "NUST" | "IUM",
+      faculty: djangoProgram.faculty || "",
+      department: djangoProgram.department || "",
+      programName: djangoProgram.program_name,
+      programCode: djangoProgram.program_code,
+      duration: djangoProgram.duration,
+      minPoints: parseInt(djangoProgram.minimum_points) || 25,
+      admissionRequirements: parseAdmissionRequirements(djangoProgram.structured_requirements),
+      careerPossibilities: djangoProgram.career_possibilities 
+        ? djangoProgram.career_possibilities.split(",").map((s: string) => s.trim()) 
+        : [],
+      interestCategories: djangoProgram.interest_category 
+        ? djangoProgram.interest_category.split(",").map((s: string) => s.trim()) 
+        : [],
     }
 
-    // Calculate additional fields your system expects
-    const { eligible, missingRequirements } = checkProgramRequirements(studentProfile, originalProgram)
-    const interestAlignment = calculateInterestAlignment(studentProfile.interests, originalProgram.interestCategories)
-    const pointsRatio = studentProfile.totalPoints / originalProgram.minPoints
+    console.log(`✅ Created program from Django: ${program.programName}`)
+
+    // Calculate match details
+    const { eligible, missingRequirements } = checkProgramRequirements(studentProfile, program)
+    const interestAlignment = calculateInterestAlignment(studentProfile.interests, program.interestCategories)
+    const pointsRatio = studentProfile.totalPoints / program.minPoints
 
     let eligibilityStatus: "eligible" | "not-eligible" | "borderline"
     if (eligible) {
@@ -148,30 +103,29 @@ function transformDjangoToYourFormat(
       eligibilityStatus = "not-eligible"
     }
 
-    // Use AI similarity score - Django doesn't return scores, so we'll calculate
     const matchScore = calculateMatchScore(eligibilityStatus, interestAlignment, pointsRatio)
 
-    console.log(`🎯 Program: ${originalProgram.programName}, Score: ${matchScore}`)
+    console.log(`🎯 Program: ${program.programName}, Score: ${matchScore}`)
 
     return {
-      program: originalProgram,
+      program,
       matchScore,
       eligibilityStatus,
       missingRequirements,
       interestAlignment,
       recommendationReason: generateRecommendationReason(
-        originalProgram,
+        program,
         eligibilityStatus,
         interestAlignment,
         missingRequirements,
       ),
     }
-  }).filter(Boolean) // Remove nulls
+  })
 
   // Sort by score (highest first)
   matches.sort((a: any, b: any) => b.matchScore - a.matchScore)
 
-  // Keep your existing structure
+  // Create result structure
   const topMatches = matches.filter((m: any) => m.eligibilityStatus === "eligible").slice(0, 5)
   const alternativeOptions = matches.filter((m: any) => m.eligibilityStatus === "borderline").slice(0, 3)
 
@@ -198,145 +152,131 @@ function transformDjangoToYourFormat(
   return result
 }
 
-
-async function matchStudentToPrograms(student: StudentProfile, programs: UniversityProgram[]) { 
-  const matches = programs.map((program) => { 
-    const { eligible, missingRequirements } = checkProgramRequirements(student, program) 
-    const interestAlignment = calculateInterestAlignment(student.interests, program.interestCategories) 
-    const pointsRatio = student.totalPoints / program.minPoints 
-
-    let eligibilityStatus: "eligible" | "not-eligible" | "borderline" 
-    if (eligible) { 
-      eligibilityStatus = "eligible" 
-    } else if (missingRequirements.length <= 2 && pointsRatio > 0.8) { 
-      eligibilityStatus = "borderline" 
-    } else { 
-      eligibilityStatus = "not-eligible" 
-    } 
-
-    const matchScore = calculateMatchScore(eligibilityStatus, interestAlignment, pointsRatio) 
-
-    return { 
-      program, 
-      matchScore, 
-      eligibilityStatus, 
-      missingRequirements, 
-      interestAlignment, 
-      recommendationReason: generateRecommendationReason( 
-        program, 
-        eligibilityStatus, 
-        interestAlignment, 
-        missingRequirements, 
-      ), 
-    } 
-  }) 
-
-  matches.sort((a, b) => b.matchScore - a.matchScore) 
-
-  const topMatches = matches.filter((m) => m.eligibilityStatus === "eligible").slice(0, 5) 
-  const alternativeOptions = matches.filter((m) => m.eligibilityStatus === "borderline").slice(0, 3) 
-
-  return { 
-    matches, 
-    generalEligibility: { 
-      UNAM: checkGeneralEligibility(student, "UNAM"), 
-      NUST: checkGeneralEligibility(student, "NUST"), 
-      IUM: checkGeneralEligibility(student, "IUM"), 
-    }, 
-    recommendations: { 
-      topMatches, 
-      alternativeOptions, 
-      improvementSuggestions: generateImprovementSuggestions(student, topMatches), 
-    }, 
-  } 
-} 
-
 // Updated parseAdmissionRequirements to handle JSON object format from database
+// Enhanced parseAdmissionRequirements to handle complex logic
 function parseAdmissionRequirements(structured: any): any[] { 
   if (!structured) return [] 
 
-  // If it's an object (from JSONB column, e.g., {"Biology": "NSSCAS >= D", ...})
+  console.log("🔍 Parsing requirements:", typeof structured, structured)
+
+  // If it's an object (from JSONB column)
   if (typeof structured === "object" && !Array.isArray(structured)) { 
     const requirements = [] 
+    
     for (const [subject, req] of Object.entries(structured)) { 
-      // Handle different requirement formats
-      const reqString = req as string
-      
-      // Try "NSSCH >= 3" format
-      let match = reqString.match(/(\w+)\s*>=\s*(\w+)/)
-      if (match) { 
-        requirements.push({ 
-          subject: subject.trim(), 
-          level: match[1].trim(), 
-          minGrade: match[2].trim(), 
-        }) 
+      // Skip OptionX keys as they represent combinations, not individual subjects
+      if (subject.startsWith('Option')) {
+        console.log(`📋 Found combination requirement: ${subject} = ${req}`)
+        // You could parse these separately if needed for display
         continue
       }
       
-      // Try "NSSCH = 3" format (your current format)
-      match = reqString.match(/(\w+)\s*=\s*(\w+)/)
-      if (match) { 
-        requirements.push({ 
-          subject: subject.trim(), 
-          level: match[1].trim(), 
-          minGrade: match[2].trim(), 
-        }) 
-        continue
+      let reqString: string
+      
+      if (typeof req === 'string') {
+        reqString = req
+      } else {
+        reqString = String(req)
       }
       
-      // Try "NSSCH 3" format
-      match = reqString.match(/(\w+)\s+(\w+)/)
-      if (match) { 
-        requirements.push({ 
-          subject: subject.trim(), 
-          level: match[1].trim(), 
-          minGrade: match[2].trim(), 
-        }) 
-        continue
+      console.log(`🔍 Processing requirement: ${subject} = ${reqString}`)
+
+      // Handle complex "OR" conditions like "NSSCH >= 3 OR NSSCAS >= C"
+      if (reqString.includes(' OR ')) {
+        const alternatives = reqString.split(' OR ').map(alt => alt.trim())
+        
+        for (const alternative of alternatives) {
+          const parsed = parseSingleRequirement(subject, alternative)
+          if (parsed) {
+            requirements.push(parsed)
+          }
+        }
+      } else {
+        // Single requirement
+        const parsed = parseSingleRequirement(subject, reqString)
+        if (parsed) {
+          requirements.push(parsed)
+        }
       }
-      
-      console.warn(`Invalid requirement format for ${subject}: ${req}`) 
     } 
+    
     return requirements 
   } 
 
-  // If it's already an array
+  // Handle other types (array, string) as before...
   if (Array.isArray(structured)) { 
     return structured 
   } 
 
-  // If it's a string (fallback for plain text)
   if (typeof structured === "string") { 
     try { 
-      // Try parsing as JSON string 
-      return parseAdmissionRequirements(JSON.parse(structured))  // Recurse to handle object
+      return parseAdmissionRequirements(JSON.parse(structured))
     } catch { 
-      // Fallback: treat as plain text 
-      const requirements: any[] = [] 
-      const lines = structured.split("\n").filter((line) => line.trim()) 
-
-      for (const line of lines) { 
-        if (line.includes(":")) { 
-          const [subject, requirement] = line.split(":").map((s) => s.trim()) 
-          const match = requirement.match(/(\w+)\s*>\=\s*(\w+)/)  // Updated regex for ">= "
-          if (match) { 
-            requirements.push({ 
-              subject: subject, 
-              level: match[1], 
-              minGrade: match[2], 
-            }) 
-          } 
-        } 
-      } 
-
-      return requirements 
+      // Fallback for plain text
+      return parsePlainTextRequirements(structured)
     } 
   } 
 
-  // Fallback 
-  console.warn("Invalid structured_requirements type:", typeof structured) 
+  console.warn("❌ Invalid structured_requirements type:", typeof structured) 
   return [] 
-} 
+}
+
+// Helper function to parse single requirement patterns
+function parseSingleRequirement(subject: string, requirement: string): any {
+  // Try "NSSCAS >= C" format
+  let match = requirement.match(/(\w+)\s*>=\s*([A-Z0-9*]+)/i)
+  if (match) { 
+    return { 
+      subject: subject.trim(), 
+      level: match[1].trim(), 
+      minGrade: match[2].trim(), 
+      rawRequirement: requirement // Keep original for reference
+    } 
+  }
+  
+  // Try "NSSCH = 3" format
+  match = requirement.match(/(\w+)\s*=\s*([A-Z0-9*]+)/i)
+  if (match) { 
+    return { 
+      subject: subject.trim(), 
+      level: match[1].trim(), 
+      minGrade: match[2].trim(),
+      rawRequirement: requirement
+    } 
+  }
+  
+  // Try "NSSCH 3" format
+  match = requirement.match(/(\w+)\s+([A-Z0-9*]+)/i)
+  if (match) { 
+    return { 
+      subject: subject.trim(), 
+      level: match[1].trim(), 
+      minGrade: match[2].trim(),
+      rawRequirement: requirement
+    } 
+  }
+  
+  console.warn(`❌ Could not parse requirement: ${subject} - ${requirement}`)
+  return null
+}
+
+// Helper for plain text requirements (fallback)
+function parsePlainTextRequirements(text: string): any[] {
+  const requirements: any[] = [] 
+  const lines = text.split("\n").filter((line) => line.trim()) 
+
+  for (const line of lines) { 
+    if (line.includes(":")) { 
+      const [subject, requirement] = line.split(":").map((s) => s.trim()) 
+      const parsed = parseSingleRequirement(subject, requirement)
+      if (parsed) {
+        requirements.push(parsed)
+      }
+    } 
+  } 
+
+  return requirements 
+}
 
 function checkProgramRequirements(student: StudentProfile, program: UniversityProgram) {
   const missingRequirements: string[] = []
