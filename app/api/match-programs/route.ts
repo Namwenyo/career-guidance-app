@@ -89,45 +89,42 @@ function transformDjangoToYourFormat(
 
     console.log(`✅ Created program from Django: ${program.programName}`)
 
-    // Calculate match details
-    const { eligible, missingRequirements } = checkProgramRequirements(studentProfile, program)
+    // 🎯 TRUST DJANGO'S DECISIONS - Don't re-check requirements
+    // If Django included it in the response, it means the student meets requirements
+    const eligible = true
+    const missingRequirements: string[] = []
+    
+    // Use Django's similarity score directly (convert to percentage)
+    const djangoSimilarity = djangoProgram.similarity_score || 0
+    const matchScore = Math.min(Math.round(djangoSimilarity * 100), 100)
+    
+    // Calculate interest alignment for display purposes only
     const interestAlignment = calculateInterestAlignment(studentProfile.interests, program.interestCategories)
-    const pointsRatio = studentProfile.totalPoints / program.minPoints
 
-    let eligibilityStatus: "eligible" | "not-eligible" | "borderline"
-    if (eligible) {
-      eligibilityStatus = "eligible"
-    } else if (missingRequirements.length <= 2 && pointsRatio > 0.8) {
-      eligibilityStatus = "borderline"
-    } else {
-      eligibilityStatus = "not-eligible"
-    }
-
-    const matchScore = calculateMatchScore(eligibilityStatus, interestAlignment, pointsRatio)
-
-    console.log(`🎯 Program: ${program.programName}, Score: ${matchScore}`)
+    console.log(`🎯 Program: ${program.programName}, Django Score: ${djangoSimilarity}, Final Score: ${matchScore}`)
 
     return {
       program,
       matchScore,
-      eligibilityStatus,
+      eligibilityStatus: "eligible" as const,
       missingRequirements,
       interestAlignment,
       recommendationReason: generateRecommendationReason(
         program,
-        eligibilityStatus,
+        "eligible",
         interestAlignment,
         missingRequirements,
       ),
+      _djangoSimilarity: djangoSimilarity // Keep for debugging
     }
   })
 
-  // Sort by score (highest first)
+  // Sort by Django's similarity score (highest first)
   matches.sort((a: any, b: any) => b.matchScore - a.matchScore)
 
   // Create result structure
   const topMatches = matches.filter((m: any) => m.eligibilityStatus === "eligible").slice(0, 5)
-  const alternativeOptions = matches.filter((m: any) => m.eligibilityStatus === "borderline").slice(0, 3)
+  const alternativeOptions = matches.filter((m: any) => m.matchScore >= 30 && m.matchScore < 70).slice(0, 3)
 
   const result = {
     matches,
@@ -152,22 +149,18 @@ function transformDjangoToYourFormat(
   return result
 }
 
-// Updated parseAdmissionRequirements to handle JSON object format from database
-// Enhanced parseAdmissionRequirements to handle complex logic
+// Keep these helper functions for parsing requirements (for display purposes only)
 function parseAdmissionRequirements(structured: any): any[] { 
   if (!structured) return [] 
 
   console.log("🔍 Parsing requirements:", typeof structured, structured)
 
-  // If it's an object (from JSONB column)
   if (typeof structured === "object" && !Array.isArray(structured)) { 
     const requirements = [] 
     
     for (const [subject, req] of Object.entries(structured)) { 
-      // Skip OptionX keys as they represent combinations, not individual subjects
       if (subject.startsWith('Option')) {
         console.log(`📋 Found combination requirement: ${subject} = ${req}`)
-        // You could parse these separately if needed for display
         continue
       }
       
@@ -181,7 +174,6 @@ function parseAdmissionRequirements(structured: any): any[] {
       
       console.log(`🔍 Processing requirement: ${subject} = ${reqString}`)
 
-      // Handle complex "OR" conditions like "NSSCH >= 3 OR NSSCAS >= C"
       if (reqString.includes(' OR ')) {
         const alternatives = reqString.split(' OR ').map(alt => alt.trim())
         
@@ -192,7 +184,6 @@ function parseAdmissionRequirements(structured: any): any[] {
           }
         }
       } else {
-        // Single requirement
         const parsed = parseSingleRequirement(subject, reqString)
         if (parsed) {
           requirements.push(parsed)
@@ -203,7 +194,6 @@ function parseAdmissionRequirements(structured: any): any[] {
     return requirements 
   } 
 
-  // Handle other types (array, string) as before...
   if (Array.isArray(structured)) { 
     return structured 
   } 
@@ -212,7 +202,6 @@ function parseAdmissionRequirements(structured: any): any[] {
     try { 
       return parseAdmissionRequirements(JSON.parse(structured))
     } catch { 
-      // Fallback for plain text
       return parsePlainTextRequirements(structured)
     } 
   } 
@@ -221,20 +210,17 @@ function parseAdmissionRequirements(structured: any): any[] {
   return [] 
 }
 
-// Helper function to parse single requirement patterns
 function parseSingleRequirement(subject: string, requirement: string): any {
-  // Try "NSSCAS >= C" format
   let match = requirement.match(/(\w+)\s*>=\s*([A-Z0-9*]+)/i)
   if (match) { 
     return { 
       subject: subject.trim(), 
       level: match[1].trim(), 
       minGrade: match[2].trim(), 
-      rawRequirement: requirement // Keep original for reference
+      rawRequirement: requirement
     } 
   }
   
-  // Try "NSSCH = 3" format
   match = requirement.match(/(\w+)\s*=\s*([A-Z0-9*]+)/i)
   if (match) { 
     return { 
@@ -245,7 +231,6 @@ function parseSingleRequirement(subject: string, requirement: string): any {
     } 
   }
   
-  // Try "NSSCH 3" format
   match = requirement.match(/(\w+)\s+([A-Z0-9*]+)/i)
   if (match) { 
     return { 
@@ -260,7 +245,6 @@ function parseSingleRequirement(subject: string, requirement: string): any {
   return null
 }
 
-// Helper for plain text requirements (fallback)
 function parsePlainTextRequirements(text: string): any[] {
   const requirements: any[] = [] 
   const lines = text.split("\n").filter((line) => line.trim()) 
@@ -278,71 +262,7 @@ function parsePlainTextRequirements(text: string): any[] {
   return requirements 
 }
 
-function checkProgramRequirements(student: StudentProfile, program: UniversityProgram) {
-  const missingRequirements: string[] = []
-
-  if (student.totalPoints < program.minPoints) {
-    missingRequirements.push(`Need ${program.minPoints - student.totalPoints} more points`)
-  }
-
-  for (const requirement of program.admissionRequirements) {
-    // Find student subject with level hierarchy logic
-    const studentSubject = student.subjects.find((s) => {
-      const subjectMatches = s.subject.toLowerCase() === requirement.subject.toLowerCase()
-      const levelQualifies = checkLevelRequirement(s.level, requirement.level)
-      return subjectMatches && levelQualifies
-    })
-
-    if (!studentSubject) {
-      missingRequirements.push(
-        `${requirement.subject} at ${requirement.level} level or higher (${requirement.minGrade} or better)`,
-      )
-      continue
-    }
-
-    const isGradeSufficient = checkGradeRequirement(studentSubject.grade, requirement.minGrade, studentSubject.level)
-    if (!isGradeSufficient) {
-      missingRequirements.push(
-        `${requirement.subject}: Need ${requirement.minGrade} or better (you have ${studentSubject.grade})`,
-      )
-    }
-  }
-
-  return {
-    eligible: missingRequirements.length === 0,
-    missingRequirements,
-  }
-}
-
-function checkGradeRequirement(studentGrade: string, requiredGrade: string, level: string): boolean { 
-  let gradeOrder: string[] 
-
-  switch (level) { 
-    case "NSSCO": 
-      gradeOrder = ["A*", "A", "B", "C", "D", "E", "F"] 
-      break 
-    case "IGCSE": 
-      gradeOrder = ["A*", "A", "B", "C", "D", "E", "F"] 
-      break 
-    case "NSSCAS": 
-      gradeOrder = ["A", "B", "C", "D", "E"] 
-      break 
-    case "NSSCH": 
-      gradeOrder = ["1", "2", "3", "4"] 
-      break 
-    case "HIGCSE": 
-      gradeOrder = ["1", "2", "3", "4"] 
-      break 
-    default: 
-      return false 
-  } 
-
-  const requiredIndex = gradeOrder.indexOf(requiredGrade) 
-  const studentIndex = gradeOrder.indexOf(studentGrade) 
-
-  return studentIndex !== -1 && requiredIndex !== -1 && studentIndex <= requiredIndex 
-} 
-
+// Keep interest alignment calculation for display
 function calculateInterestAlignment(studentInterests: string[], programInterests: string[]): number { 
   if (studentInterests.length === 0 || programInterests.length === 0) return 0 
 
@@ -352,31 +272,6 @@ function calculateInterestAlignment(studentInterests: string[], programInterests
 
   return (commonInterests.length / studentInterests.length) * 100 
 } 
-
-function calculateMatchScore(
-  eligibilityStatus: "eligible" | "not-eligible" | "borderline",
-  interestAlignment: number,
-  pointsRatio: number,
-): number {
-  let baseScore = 0
-
-  switch (eligibilityStatus) {
-    case "eligible":
-      baseScore = 70
-      break
-    case "borderline":
-      baseScore = 40
-      break
-    case "not-eligible":
-      baseScore = 10
-      break
-  }
-
-  const interestScore = (interestAlignment / 100) * 25
-  const pointsBonus = Math.min(pointsRatio * 5, 5)
-
-  return Math.round(baseScore + interestScore + pointsBonus)
-}
 
 function generateRecommendationReason(
   program: UniversityProgram,
@@ -392,13 +287,12 @@ function generateRecommendationReason(
     } else {
       return `You meet the requirements for this program, though it may not fully align with your stated interests.`
     }
-  } else if (eligibilityStatus === "borderline") {
-    return `Close match! You're almost eligible - ${missingRequirements.join(", ")}. Consider this as a stretch goal.`
   } else {
     return `This program requires additional preparation: ${missingRequirements.slice(0, 2).join(", ")}.`
   }
 }
 
+// Keep general eligibility check (for institution-level overview)
 function checkGeneralEligibility(student: StudentProfile, institution: "UNAM" | "NUST" | "IUM"): boolean {
   const englishSubject = student.subjects.find((s) => s.subject === "English")
   if (!englishSubject) return false
@@ -406,35 +300,22 @@ function checkGeneralEligibility(student: StudentProfile, institution: "UNAM" | 
   const studentPoints = student.totalPoints
   const englishPoints = englishSubject.points
 
-  // Count subjects by level with proper hierarchy understanding
   const nsscoSubjects = student.subjects.filter(s => s.level === "NSSCO")
   const higherLevelSubjects = student.subjects.filter(s => 
     ["NSSCH", "NSSCAS", "HIGCSE"].includes(s.level)
   )
 
   if (institution === "UNAM") {
-    // Count higher level subjects with D or better (6+ points)
     const higherLevelDPlus = higherLevelSubjects.filter(s => s.points >= 6).length
-    
-    // Count NSSCO subjects with C or better (5+ points)
     const nsscoCPlus = nsscoSubjects.filter(s => s.points >= 5).length
-    
-    // Count NSSCO subjects with D or better (4+ points)  
     const nsscoDPlus = nsscoSubjects.filter(s => s.points >= 4).length
 
-    // UNAM Degree Requirements
     if (studentPoints >= 25 && englishPoints >= 5) {
-      // Option 1: 2 higher level (≥D) + 3 NSSCO (≥C)
       if (higherLevelDPlus >= 2 && nsscoCPlus >= 3) return true
-      
-      // Option 2: 3 higher level (≥D) + 2 NSSCO (≥D)
       if (higherLevelDPlus >= 3 && nsscoDPlus >= 2) return true
-      
-      // Option 3: 5 NSSCO subjects (traditional route)
       if (nsscoSubjects.length >= 5 && nsscoCPlus >= 3) return true
     }
 
-    // UNAM Diploma Requirements
     if (studentPoints >= 24 && englishPoints >= 4) {
       return true
     }
@@ -465,10 +346,4 @@ function generateImprovementSuggestions(student: StudentProfile, topMatches: any
   }
 
   return suggestions
-}
-
-function checkLevelRequirement(studentLevel: string, requiredLevel: string): boolean {
-  const studentLevelNum = LEVEL_HIERARCHY[studentLevel] || 0
-  const requiredLevelNum = LEVEL_HIERARCHY[requiredLevel] || 0
-  return studentLevelNum >= requiredLevelNum
 }
