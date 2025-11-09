@@ -61,92 +61,99 @@ function transformDjangoToYourFormat(
 ) {
   console.log("🔄 Transforming Django response...")
   
-  const djangoPrograms = djangoData.programs || []
-  const matchCount = djangoData.match_count || 0
+  const eligiblePrograms = djangoData.eligible_programs || []
+  const alternativePrograms = djangoData.alternative_programs || []
+  const eligibleCount = djangoData.eligible_count || 0
+  const alternativeCount = djangoData.alternative_count || 0
   
-  console.log(`📊 Django found ${matchCount} matching programs`)
+  console.log(`📊 Django found ${eligibleCount} eligible and ${alternativeCount} alternative programs`)
 
-  // Create UniversityProgram objects directly from Django data
-  const matches = djangoPrograms.map((djangoProgram: any) => {
-    // Create program object from Django data
-    const program: UniversityProgram = {
-      id: `${djangoProgram.institution}-${djangoProgram.program_code}`,
-      institution: djangoProgram.institution as "UNAM" | "NUST" | "IUM",
-      faculty: djangoProgram.faculty || "",
-      department: djangoProgram.department || "",
-      programName: djangoProgram.program_name,
-      programCode: djangoProgram.program_code,
-      duration: djangoProgram.duration,
-      minPoints: parseInt(djangoProgram.minimum_points) || 25,
-      admissionRequirements: parseAdmissionRequirements(djangoProgram.structured_requirements),
-      careerPossibilities: djangoProgram.career_possibilities 
-        ? djangoProgram.career_possibilities.split(",").map((s: string) => s.trim()) 
-        : [],
-      interestCategories: djangoProgram.interest_category 
-        ? djangoProgram.interest_category.split(",").map((s: string) => s.trim()) 
-        : [],
-    }
-
-    console.log(`✅ Created program from Django: ${program.programName}`)
-
-    // 🎯 TRUST DJANGO'S DECISIONS - Don't re-check requirements
-    // If Django included it in the response, it means the student meets requirements
-    const eligible = true
-    const missingRequirements: string[] = []
-    
-    // Use Django's similarity score directly (convert to percentage)
-    const djangoSimilarity = djangoProgram.similarity_score || 0
-    const matchScore = Math.min(Math.round(djangoSimilarity * 100), 100)
-    
-    // Calculate interest alignment for display purposes only
-    const interestAlignment = calculateInterestAlignment(studentProfile.interests, program.interestCategories)
-
-    console.log(`🎯 Program: ${program.programName}, Django Score: ${djangoSimilarity}, Final Score: ${matchScore}`)
-
-    return {
-      program,
-      matchScore,
-      eligibilityStatus: "eligible" as const,
-      missingRequirements,
-      interestAlignment,
-      recommendationReason: generateRecommendationReason(
-        program,
-        "eligible",
-        interestAlignment,
-        missingRequirements,
-      ),
-      _djangoSimilarity: djangoSimilarity // Keep for debugging
-    }
+  // Transform eligible programs
+  const topMatches = eligiblePrograms.map((djangoProgram: any) => {
+    return createProgramMatch(djangoProgram, studentProfile, "eligible")
   })
 
-  // Sort by Django's similarity score (highest first)
-  matches.sort((a: any, b: any) => b.matchScore - a.matchScore)
+  // Transform alternative programs
+  const alternativeOptions = alternativePrograms.map((djangoProgram: any) => {
+    return createProgramMatch(djangoProgram, studentProfile, "not-eligible")
+  })
 
-  // Create result structure
-  const topMatches = matches.filter((m: any) => m.eligibilityStatus === "eligible").slice(0, 5)
-  const alternativeOptions = matches.filter((m: any) => m.matchScore >= 30 && m.matchScore < 70).slice(0, 3)
+  // Combine all programs for "all programs" tab
+  const allMatches = [...topMatches, ...alternativeOptions]
+
+  // Sort by match score
+  topMatches.sort((a: any, b: any) => b.matchScore - a.matchScore)
+  alternativeOptions.sort((a: any, b: any) => b.matchScore - a.matchScore)
+  allMatches.sort((a: any, b: any) => b.matchScore - a.matchScore)
 
   const result = {
-    matches,
+    matches: allMatches,
     generalEligibility: {
       UNAM: checkGeneralEligibility(studentProfile, "UNAM"),
       NUST: checkGeneralEligibility(studentProfile, "NUST"),
       IUM: checkGeneralEligibility(studentProfile, "IUM"),
     },
     recommendations: {
-      topMatches,
-      alternativeOptions,
-      improvementSuggestions: generateImprovementSuggestions(studentProfile, topMatches),
+      topMatches: topMatches.slice(0, 5),
+      alternativeOptions: alternativeOptions.slice(0, 3),
+      improvementSuggestions: generateImprovementSuggestions(studentProfile, topMatches, alternativeOptions),
     },
     _debug: {
-      djangoMatchCount: matchCount,
-      transformedCount: matches.length,
-      usedAI: true
+      djangoEligibleCount: eligibleCount,
+      djangoAlternativeCount: alternativeCount,
+      usedAI: true,
+      requirementChecked: true
     }
   }
 
   console.log("✅ Final transformed result:", result._debug)
   return result
+}
+
+// Helper function to create program match objects
+function createProgramMatch(djangoProgram: any, studentProfile: StudentProfile, eligibility: "eligible" | "not-eligible") {
+  const programData = djangoProgram.program_object || djangoProgram // Fallback to direct data
+  
+  const program: UniversityProgram = {
+    id: programData.id?.toString() || `${programData.institution}-${programData.program_code}`,
+    institution: programData.institution as "UNAM" | "NUST" | "IUM",
+    faculty: programData.faculty || "",
+    department: programData.department || "",
+    programName: programData.program_name,
+    programCode: programData.program_code || "",
+    duration: programData.duration || "",
+    minPoints: parseInt(programData.minimum_points) || 25,
+    admissionRequirements: parseAdmissionRequirements(programData.structured_requirements),
+    careerPossibilities: programData.career_possibilities 
+      ? programData.career_possibilities.split(",").map((s: string) => s.trim()) 
+      : [],
+    interestCategories: programData.interest_category 
+      ? programData.interest_category.split(",").map((s: string) => s.trim()) 
+      : [],
+  }
+
+  // Convert similarity score to percentage
+  const matchScore = Math.min(Math.round((djangoProgram.similarity_score || 0) * 100), 100)
+  
+  // Calculate interest alignment for display
+  const interestAlignment = calculateInterestAlignment(studentProfile.interests, program.interestCategories)
+
+  // Use Django's missing requirements for alternative programs
+  const missingRequirements = eligibility === "not-eligible" ? (djangoProgram.missing_requirements || []) : []
+
+  return {
+    program,
+    matchScore,
+    eligibilityStatus: eligibility,
+    missingRequirements,
+    interestAlignment,
+    recommendationReason: generateRecommendationReason(program, eligibility, interestAlignment, missingRequirements),
+    _djangoData: { // Keep for debugging
+      similarity: djangoProgram.similarity_score,
+      eligibilityMessage: djangoProgram.eligibility_message,
+      missingRequirements: djangoProgram.missing_requirements
+    }
+  }
 }
 
 // Keep these helper functions for parsing requirements (for display purposes only)
@@ -288,7 +295,11 @@ function generateRecommendationReason(
       return `You meet the requirements for this program, though it may not fully align with your stated interests.`
     }
   } else {
-    return `This program requires additional preparation: ${missingRequirements.slice(0, 2).join(", ")}.`
+    if (missingRequirements.length > 0) {
+      return `This program aligns with your interests but requires: ${missingRequirements.slice(0, 2).join(", ")}. Consider improving these areas.`
+    } else {
+      return `This program aligns with your interests but requires additional preparation.`
+    }
   }
 }
 
@@ -334,16 +345,44 @@ function checkGeneralEligibility(student: StudentProfile, institution: "UNAM" | 
   return false
 }
 
-function generateImprovementSuggestions(student: StudentProfile, topMatches: any[]): string[] {
+function generateImprovementSuggestions(student: StudentProfile, topMatches: any[], alternativeOptions: any[]): string[] {
   const suggestions: string[] = []
 
   if (student.totalPoints < 25) {
-    suggestions.push("Consider retaking some subjects to improve your total points")
+    suggestions.push("Consider retaking some subjects to improve your total points - this would open up more program options")
   }
 
-  if (topMatches.length === 0) {
-    suggestions.push("Consider diploma programs as a pathway to degree programs")
+  if (topMatches.length === 0 && alternativeOptions.length > 0) {
+    suggestions.push("Focus on meeting the specific subject requirements for your interested alternative programs")
+  } else if (topMatches.length < 3) {
+    suggestions.push("Improving your grades in key subjects could qualify you for more of your preferred programs")
   }
 
-  return suggestions
+  // Add specific suggestions based on common missing requirements from alternatives
+  if (alternativeOptions.length > 0) {
+    const allMissingReqs = alternativeOptions.flatMap((alt: any) => alt.missingRequirements || [])
+    
+    // Check for common missing requirements
+    const hasMathReq = allMissingReqs.some((req: string) => req.toLowerCase().includes('mathematics'))
+    const hasEnglishReq = allMissingReqs.some((req: string) => req.toLowerCase().includes('english'))
+    const hasScienceReq = allMissingReqs.some((req: string) => req.toLowerCase().includes('science'))
+    
+    if (hasMathReq) suggestions.push("Improve your Mathematics grade to access more programs")
+    if (hasEnglishReq) suggestions.push("Meet the English language requirements for your preferred programs")
+    if (hasScienceReq) suggestions.push("Consider improving your Science subjects for STEM programs")
+  }
+
+  // Add suggestions based on student interests
+  const hasMath = student.subjects.some(s => s.subject === "Mathematics")
+  const hasEnglish = student.subjects.some(s => s.subject === "English")
+  const hasScience = student.subjects.some(s => s.subject.includes("Science"))
+  
+  if (!hasMath && student.interests.some(i => i.toLowerCase().includes('engineering'))) {
+    suggestions.push("Mathematics is essential for engineering programs - consider taking it")
+  }
+  if (!hasScience && student.interests.some(i => i.toLowerCase().includes('science'))) {
+    suggestions.push("Science subjects would help you access programs in your areas of interest")
+  }
+
+  return suggestions.slice(0, 3) // Return top 3 suggestions
 }

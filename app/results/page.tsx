@@ -200,7 +200,40 @@ export default function ResultsPage() {
     }
   }
 
-  const ProgramCard = ({ match }: { match: ProgramMatch }) => (
+const ProgramCard = ({ match }: { match: ProgramMatch }) => {
+  const [feedbackSent, setFeedbackSent] = useState(false)
+
+const sendFeedback = async (liked: boolean) => {
+  try {
+    const response = await fetch("http://localhost:8000/api/feedback/", { // Your Django URL
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        program_id: match.program.id, // Change to program_id to match Django expectation
+        liked: liked,
+        student_text: JSON.stringify({
+          subjects: studentProfile?.subjects,
+          interests: studentProfile?.interests,
+          totalPoints: studentProfile?.totalPoints
+        }),
+      }),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`HTTP ${response.status}: ${errorText}`)
+    }
+
+    const result = await response.json()
+    console.log("Feedback response:", result)
+    setFeedbackSent(true)
+  } catch (error) {
+    console.error("Error sending feedback:", error)
+    alert("Failed to send feedback. Please try again later.")
+  }
+}
+
+  return (
     <Card className="hover:shadow-lg transition-shadow">
       <CardHeader>
         <div className="flex items-start justify-between">
@@ -218,6 +251,7 @@ export default function ResultsPage() {
           </div>
         </div>
       </CardHeader>
+
       <CardContent className="space-y-4">
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
           <div className="flex items-center gap-1">
@@ -277,9 +311,31 @@ export default function ResultsPage() {
             View Program Details
           </Button>
         </Link>
+
+        {/* Like/Dislike Buttons */}
+        <div className="flex gap-2 justify-end mt-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={feedbackSent}
+            onClick={() => sendFeedback(true)}
+          >
+            👍 Like
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={feedbackSent}
+            onClick={() => sendFeedback(false)}
+          >
+            👎 Dislike
+          </Button>
+          {feedbackSent && <span className="text-sm text-green-600 ml-2">Feedback sent!</span>}
+        </div>
       </CardContent>
     </Card>
   )
+}
 
   return (
     <div className="min-h-screen bg-background">
@@ -297,75 +353,14 @@ export default function ResultsPage() {
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="mb-8">
-          {aiRecommendations ? (
-            <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
-              <CardHeader>
-                <div className="flex items-center gap-2 mb-2">
-                  <Brain className="h-5 w-5 text-primary" />
-                  <Badge variant="secondary" className="bg-primary/10 text-primary">
-                    AI-Powered Insights
-                  </Badge>
-                </div>
-                <CardTitle className="text-2xl">Personalized Career Guidance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="prose prose-sm max-w-none">
-                  <div className="whitespace-pre-wrap text-muted-foreground leading-relaxed">
-                    {aiRecommendations.fullAnalysis || aiRecommendations.personalizedMessage}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div>
-              <h2 className="text-3xl font-bold text-foreground mb-2">
-                Hello {studentProfile.name}! Here are your personalized recommendations.
-              </h2>
-              <p className="text-lg text-muted-foreground">
-                Based on your {studentProfile.totalPoints} points and interests in{" "}
-                {studentProfile.interests.slice(0, 5).join(", ")}, we've found the best programs for you.
-              </p>
-            </div>
-          )}
+          <h2 className="text-3xl font-bold text-foreground mb-2">
+            Hello {studentProfile.name}! Here are your personalized recommendations.
+          </h2>
+          <p className="text-lg text-muted-foreground">
+            Based on your {studentProfile.totalPoints} points and interests in{" "}
+            {studentProfile.interests.slice(0, 5).join(", ")}, we've found the best programs for you.
+          </p>
         </div>
-
-        {aiRecommendations && (
-          <Card className="mb-8">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                AI Career Market Insights
-              </CardTitle>
-              <CardDescription>Current trends and future outlook for your career interests</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <h4 className="font-medium mb-2">Market Trends</h4>
-                <div className="flex flex-wrap gap-2">
-                  {aiRecommendations.careerInsights.marketTrends.map((trend, index) => (
-                    <Badge key={index} variant="outline" className="text-xs">
-                      {trend}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h4 className="font-medium mb-2">In-Demand Skills</h4>
-                <div className="flex flex-wrap gap-2">
-                  {aiRecommendations.careerInsights.skillsInDemand.map((skill, index) => (
-                    <Badge key={index} variant="secondary" className="text-xs">
-                      {skill}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h4 className="font-medium mb-2">Future Outlook</h4>
-                <p className="text-sm text-muted-foreground">{aiRecommendations.careerInsights.futureOutlook}</p>
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* University Eligibility Overview */}
         <Card className="mb-8">
@@ -403,8 +398,12 @@ export default function ResultsPage() {
         </Card>
 
         {/* Main Results */}
-        <Tabs defaultValue="top-matches" className="space-y-6">
+        <Tabs defaultValue="ai-insights" className="space-y-6">
           <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="ai-insights" className="flex items-center gap-2">
+              <Brain className="h-4 w-4" />
+              AI Insights
+            </TabsTrigger>
             <TabsTrigger value="top-matches" className="flex items-center gap-2">
               <Star className="h-4 w-4" />
               Top Matches ({matchingResults.recommendations.topMatches.length})
@@ -413,67 +412,11 @@ export default function ResultsPage() {
               <TrendingUp className="h-4 w-4" />
               Alternatives ({matchingResults.recommendations.alternativeOptions.length})
             </TabsTrigger>
-            <TabsTrigger value="ai-insights" className="flex items-center gap-2">
-              <Brain className="h-4 w-4" />
-              AI Insights
-            </TabsTrigger>
             <TabsTrigger value="all-programs" className="flex items-center gap-2">
               <BookOpen className="h-4 w-4" />
               All Programs ({matchingResults.matches.length})
             </TabsTrigger>
           </TabsList>
-
-          <TabsContent value="top-matches" className="space-y-6">
-            {matchingResults.recommendations.topMatches.length > 0 ? (
-              <>
-                <Alert>
-                  <CheckCircle className="h-4 w-4" />
-                  <AlertDescription>
-                    Great news! You're eligible for {matchingResults.recommendations.topMatches.length} programs that
-                    match your interests and qualifications.
-                  </AlertDescription>
-                </Alert>
-                <div className="grid gap-6">
-                  {matchingResults.recommendations.topMatches.map((match, index) => (
-                    <ProgramCard key={match.program.id} match={match} />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <Alert>
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  No programs match your current qualifications perfectly. Check the alternatives tab for programs you
-                  might be able to qualify for with some improvement.
-                </AlertDescription>
-              </Alert>
-            )}
-          </TabsContent>
-
-          <TabsContent value="alternatives" className="space-y-6">
-            {matchingResults.recommendations.alternativeOptions.length > 0 ? (
-              <>
-                <Alert>
-                  <AlertTriangle className="h-4 w-4" />
-                  <AlertDescription>
-                    These programs are within reach with some additional preparation or improvement in specific areas.
-                  </AlertDescription>
-                </Alert>
-                <div className="grid gap-6">
-                  {matchingResults.recommendations.alternativeOptions.map((match, index) => (
-                    <ProgramCard key={match.program.id} match={match} />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <Alert>
-                <AlertDescription>
-                  No alternative programs found. Consider exploring diploma programs or improving your grades to access
-                  more options.
-                </AlertDescription>
-              </Alert>
-            )}
-          </TabsContent>
 
           <TabsContent value="ai-insights" className="space-y-6">
             {aiLoading ? (
@@ -485,6 +428,63 @@ export default function ResultsPage() {
               </div>
             ) : aiRecommendations ? (
               <div className="space-y-6">
+                {/* AI Personalized Guidance */}
+                <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
+                  <CardHeader>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Brain className="h-5 w-5 text-primary" />
+                      <Badge variant="secondary" className="bg-primary/10 text-primary">
+                        AI-Powered Insights
+                      </Badge>
+                    </div>
+                    <CardTitle className="text-2xl">Personalized Career Guidance</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose prose-sm max-w-none">
+                      <div className="whitespace-pre-wrap text-muted-foreground leading-relaxed">
+                        {aiRecommendations.fullAnalysis || aiRecommendations.personalizedMessage}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* AI Career Market Insights */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Sparkles className="h-5 w-5" />
+                      AI Career Market Insights
+                    </CardTitle>
+                    <CardDescription>Current trends and future outlook for your career interests</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <h4 className="font-medium mb-2">Market Trends</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {aiRecommendations.careerInsights.marketTrends.map((trend, index) => (
+                          <Badge key={index} variant="outline" className="text-xs">
+                            {trend}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">In-Demand Skills</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {aiRecommendations.careerInsights.skillsInDemand.map((skill, index) => (
+                          <Badge key={index} variant="secondary" className="text-xs">
+                            {skill}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Future Outlook</h4>
+                      <p className="text-sm text-muted-foreground">{aiRecommendations.careerInsights.futureOutlook}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
                 {/* AI Top Recommendations */}
                 <Card>
                   <CardHeader>
@@ -559,6 +559,58 @@ export default function ResultsPage() {
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
                   AI insights are currently unavailable. Please try refreshing the page.
+                </AlertDescription>
+              </Alert>
+            )}
+          </TabsContent>
+
+          <TabsContent value="top-matches" className="space-y-6">
+            {matchingResults.recommendations.topMatches.length > 0 ? (
+              <>
+                <Alert>
+                  <CheckCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    Great news! You're eligible for {matchingResults.recommendations.topMatches.length} programs that
+                    match your interests and qualifications.
+                  </AlertDescription>
+                </Alert>
+                <div className="grid gap-6">
+                  {matchingResults.recommendations.topMatches.map((match, index) => (
+                    <ProgramCard key={match.program.id} match={match} />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  No programs match your current qualifications perfectly. Check the alternatives tab for programs you
+                  might be able to qualify for with some improvement.
+                </AlertDescription>
+              </Alert>
+            )}
+          </TabsContent>
+
+          <TabsContent value="alternatives" className="space-y-6">
+            {matchingResults.recommendations.alternativeOptions.length > 0 ? (
+              <>
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    These programs are within reach with some additional preparation or improvement in specific areas.
+                  </AlertDescription>
+                </Alert>
+                <div className="grid gap-6">
+                  {matchingResults.recommendations.alternativeOptions.map((match, index) => (
+                    <ProgramCard key={match.program.id} match={match} />
+                  ))}
+                </div>
+              </>
+            ) : (
+              <Alert>
+                <AlertDescription>
+                  No alternative programs found. Consider exploring diploma programs or improving your grades to access
+                  more options.
                 </AlertDescription>
               </Alert>
             )}
