@@ -34,7 +34,7 @@ export default function HomePage() {
             Find Your Perfect University Program with AI
           </h2>
           <p className="text-xl text-muted-foreground mb-8 text-pretty max-w-2xl mx-auto">
-            Get personalized recommendations for UNAM, NUST, and IUM programs based on your academic performance and
+            Get personalized guidance with recommendations for UNAM, NUST, and IUM programs based on your academic performance and
             interests. Make informed decisions about your future career now.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">

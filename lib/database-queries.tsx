@@ -97,6 +97,7 @@ export async function getUniversityPrograms(): Promise<UniversityProgram[]> {
   try {
     const result = await query(`
       SELECT 
+        id,
         institution,
         faculty,
         department,
@@ -113,7 +114,7 @@ export async function getUniversityPrograms(): Promise<UniversityProgram[]> {
     `)
 
     return result.rows.map((row: any, index: number) => ({
-      id: `${row.institution.toLowerCase()}-${row.program_code || index}`,
+      id: row.id.toString(),
       institution: row.institution as "UNAM" | "NUST" | "IUM",
       faculty: row.faculty || "",
       department: row.department || "",
@@ -127,7 +128,7 @@ export async function getUniversityPrograms(): Promise<UniversityProgram[]> {
     }))
   } catch (error) {
     console.error("Error fetching university programs:", error)
-    // 🚨 REMOVED MOCK DATA FALLBACK - Return empty array instead
+    // I REMOVED MOCK DATA FALLBACK - Return empty array instead
     return []
   }
 }
@@ -150,7 +151,7 @@ export async function getGeneralRequirements(): Promise<GeneralRequirements[]> {
     }))
   } catch (error) {
     console.error("Error fetching general requirements:", error)
-    // 🚨 REMOVED MOCK DATA FALLBACK - Return empty array instead
+    // I REMOVED MOCK DATA FALLBACK - Return empty array instead
     return []
   }
 }
@@ -166,7 +167,7 @@ export async function getInterestCategories(): Promise<string[]> {
     return result.rows.map((row: any) => row.category_name)
   } catch (error) {
     console.error("Error fetching interest categories:", error)
-    // 🚨 REMOVED MOCK DATA FALLBACK - Return empty array instead
+    // I REMOVED MOCK DATA FALLBACK - Return empty array instead
     return []
   }
 }

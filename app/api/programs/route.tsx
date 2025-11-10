@@ -86,7 +86,7 @@ export async function GET() {
     `)
 
     const programs = result.rows.map((row: any, index: number) => ({
-      id: `${row.institution?.toLowerCase()}-${row.program_code || index}`,
+       id: row.id.toString(),
       institution: row.institution as "UNAM" | "NUST" | "IUM",
       faculty: row.faculty || "",
       programName: row.program_name || "",

@@ -1,7 +1,6 @@
 // app/api/programs/[id]/route.ts
 import { NextResponse } from "next/server"
 import { getUniversityPrograms } from "@/lib/database-queries"
-import { getProgramById } from "@/lib/matching-algorithm"
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   try {

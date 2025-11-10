@@ -238,7 +238,7 @@ export default function ProgramsPage() {
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                {/* <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">Interest Areas:</p>
                   <div className="flex flex-wrap gap-1">
                     {program.interestCategories.map((category, index) => (
@@ -247,7 +247,7 @@ export default function ProgramsPage() {
                       </Badge>
                     ))}
                   </div>
-                </div>
+                </div> */}
 
                 <div className="space-y-2">
                   <p className="text-sm font-medium text-muted-foreground">Key Requirements:</p>
