@@ -80,7 +80,7 @@ export default function ResultsPage() {
 
   const fetchMatchingResults = async (profile: StudentProfile) => {
     try {
-      console.log("🔄 Starting API call...")
+      console.log(" Starting API call...")
       const response = await fetch("/api/match-programs", {
         method: "POST",
         headers: {
@@ -94,7 +94,7 @@ export default function ResultsPage() {
       }
 
       const results = await response.json()
-      console.log("✅ API response received:", results)
+      console.log(" API response received:", results)
       setMatchingResults(results)
       generateAIRecommendations(profile, results)
     } catch (error) {

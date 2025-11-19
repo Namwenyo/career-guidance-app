@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   try {
     const studentProfile: StudentProfile = await request.json()
 
-    console.log("🔄 Calling Django AI matching...")
+    console.log(" Calling Django AI matching...")
     
     // Prepare data in the format Django expects
     const requestData = {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
       interests: studentProfile.interests || []
     }
 
-    console.log("📤 Sending to Django:", JSON.stringify(requestData, null, 2))
+    console.log("Sending to Django:", JSON.stringify(requestData, null, 2))
 
     // Call Django AI endpoint directly - NO LOCAL DATABASE QUERY NEEDED
     const djangoResponse = await fetch('http://localhost:8000/api/match-programs/', {
@@ -54,19 +54,19 @@ export async function POST(request: NextRequest) {
   } 
 }
 
-// 🚀 Transform Django AI response to use Django data directly
+// Transform Django AI response to use Django data directly
 function transformDjangoToYourFormat(
   djangoData: any, 
   studentProfile: StudentProfile
 ) {
-  console.log("🔄 Transforming Django response...")
+  console.log(" Transforming Django response...")
   
   const eligiblePrograms = djangoData.eligible_programs || []
   const alternativePrograms = djangoData.alternative_programs || []
   const eligibleCount = djangoData.eligible_count || 0
   const alternativeCount = djangoData.alternative_count || 0
   
-  console.log(`📊 Django found ${eligibleCount} eligible and ${alternativeCount} alternative programs`)
+  console.log(` Django found ${eligibleCount} eligible and ${alternativeCount} alternative programs`)
 
   // Transform eligible programs
   const topMatches = eligiblePrograms.map((djangoProgram: any) => {
@@ -106,7 +106,7 @@ function transformDjangoToYourFormat(
     }
   }
 
-  console.log("✅ Final transformed result:", result._debug)
+  console.log(" Final transformed result:", result._debug)
   return result
 }
 
@@ -156,18 +156,18 @@ function createProgramMatch(djangoProgram: any, studentProfile: StudentProfile, 
   }
 }
 
-// Keep these helper functions for parsing requirements (for display purposes only)
+//helper functions for parsing requirements (for display purposes only)
 function parseAdmissionRequirements(structured: any): any[] { 
   if (!structured) return [] 
 
-  console.log("🔍 Parsing requirements:", typeof structured, structured)
+  console.log(" Parsing requirements:", typeof structured, structured)
 
   if (typeof structured === "object" && !Array.isArray(structured)) { 
     const requirements = [] 
     
     for (const [subject, req] of Object.entries(structured)) { 
       if (subject.startsWith('Option')) {
-        console.log(`📋 Found combination requirement: ${subject} = ${req}`)
+        console.log(` Found combination requirement: ${subject} = ${req}`)
         continue
       }
       
@@ -179,7 +179,7 @@ function parseAdmissionRequirements(structured: any): any[] {
         reqString = String(req)
       }
       
-      console.log(`🔍 Processing requirement: ${subject} = ${reqString}`)
+      console.log(` Processing requirement: ${subject} = ${reqString}`)
 
       if (reqString.includes(' OR ')) {
         const alternatives = reqString.split(' OR ').map(alt => alt.trim())
@@ -213,7 +213,7 @@ function parseAdmissionRequirements(structured: any): any[] {
     } 
   } 
 
-  console.warn("❌ Invalid structured_requirements type:", typeof structured) 
+  console.warn(" Invalid structured_requirements type:", typeof structured) 
   return [] 
 }
 
@@ -248,7 +248,7 @@ function parseSingleRequirement(subject: string, requirement: string): any {
     } 
   }
   
-  console.warn(`❌ Could not parse requirement: ${subject} - ${requirement}`)
+  console.warn(` Could not parse requirement: ${subject} - ${requirement}`)
   return null
 }
 
@@ -269,7 +269,7 @@ function parsePlainTextRequirements(text: string): any[] {
   return requirements 
 }
 
-// Keep interest alignment calculation for display
+// Keeping this interest alignment calculation for display
 function calculateInterestAlignment(studentInterests: string[], programInterests: string[]): number { 
   if (studentInterests.length === 0 || programInterests.length === 0) return 0 
 
@@ -303,7 +303,7 @@ function generateRecommendationReason(
   }
 }
 
-// Keep general eligibility check (for institution-level overview)
+// Keeping this general eligibility check (for institution-level overview)
 function checkGeneralEligibility(student: StudentProfile, institution: "UNAM" | "NUST" | "IUM"): boolean {
   const englishSubject = student.subjects.find((s) => s.subject === "English")
   if (!englishSubject) return false

@@ -30,7 +30,7 @@ If asked about specific programs or requirements, provide accurate information b
       temperature: 0.7,
     })
 
-    return result.toTextStreamResponse() // ✅ Fixed method name
+    return result.toTextStreamResponse() // Fixed method name
   } catch (error) {
     console.error("Chat error:", error)
     return new Response(JSON.stringify({ error: "Failed to process chat" }), {
